@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+historico.db
+credenciais.json
+monitor.log
+painel.html
+ultimo_email.html
+ultimo_relatorio.html
+site/

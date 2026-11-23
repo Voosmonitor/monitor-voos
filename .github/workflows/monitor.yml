@@ -1,0 +1,88 @@
+name: Monitor de voos
+
+on:
+  schedule:
+    - cron: "0 10 * * *"   # 07:00 de Brasília
+    - cron: "0 22 * * *"   # 19:00 de Brasília
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "teste (2 janelas) | normal | completo (1 ano)"
+        default: "normal"
+        type: choice
+        options: [teste, normal, completo]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Baixar histórico (branch "dados")
+        run: |
+          if git fetch --depth=1 origin dados; then
+            git show FETCH_HEAD:historico.db > historico.db
+            echo "histórico: $(du -h historico.db | cut -f1)"
+          else
+            echo "primeira execução: sem histórico"
+          fi
+
+      - name: Coletar preços
+        env:
+          TZ: America/Sao_Paulo
+          GMAIL_REMETENTE: ${{ secrets.GMAIL_REMETENTE }}
+          GMAIL_SENHA_APP: ${{ secrets.GMAIL_SENHA_APP }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+          PAINEL_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          case "${{ inputs.modo }}" in
+            teste) python monitor.py --teste ;;
+            completo) python monitor.py --completo ;;
+            *) python monitor.py ;;
+          esac
+
+      - name: Salvar histórico
+        if: always()
+        run: |
+          [ -f historico.db ] || exit 0
+          mkdir -p /tmp/dados && cp historico.db /tmp/dados/ && cd /tmp/dados
+          git init -q -b dados
+          git add historico.db
+          git -c user.name="monitor-bot" -c user.email="monitor-bot@users.noreply.github.com" \
+              commit -q -m "histórico $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dados
+
+      - name: Preparar painel
+        if: always()
+        run: |
+          mkdir -p site
+          [ -f painel.html ] && cp painel.html site/index.html || echo "<p>Sem dados ainda.</p>" > site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        if: always()
+        with:
+          path: site
+
+      - id: deploy
+        if: always()
+        uses: actions/deploy-pages@v4

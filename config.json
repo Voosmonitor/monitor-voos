@@ -1,0 +1,39 @@
+{
+  "origens_sp": ["CGH", "GRU"],
+  "retornos_sp": ["CGH", "GRU", "VCP"],
+
+  "destinos": {
+    "Salvador": { "aeroportos": ["SSA"] },
+    "Rio de Janeiro": { "aeroportos": ["GIG", "SDU"] }
+  },
+
+  "horizonte_dias": 365,
+  "horizonte_prioritario_dias": 120,
+  "incluir_emendas": true,
+  "min_noites": 2,
+  "feriados_extras": [],
+  "feriados_ignorar": [],
+
+  "max_paradas_voo_normal": 0,
+  "ida_em_dia_util_partida_apos": 18,
+  "volta_dia_util_chegada_ate": { "CGH": "08:00", "GRU": "07:00", "VCP": "06:30" },
+
+  "teto_fim_de_semana_curto": 600,
+
+  "alertas": {
+    "queda_min_percentual": 5,
+    "queda_min_reais": 30,
+    "observacoes_min_para_recorde": 3,
+    "faixa_barata_percentil": 20
+  },
+
+  "skiplag": {
+    "ativo": true,
+    "economia_minima_reais": 60,
+    "grupos_alem_do_destino": [["REC", "FOR", "AJU", "MCZ", "NAT"], ["JPA", "IOS", "BPS", "VIX"]],
+    "grupos_alem_de_sp": [["POA", "CWB", "FLN", "IGU", "CGR", "NVT"]]
+  },
+
+  "link_painel": null,
+  "pausa_entre_buscas_seg": [2, 4]
+}
