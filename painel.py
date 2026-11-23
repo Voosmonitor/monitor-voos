@@ -99,6 +99,17 @@ def _viagem(det) -> str:
     return f'{_fd(det["ida"]["data"])} → {_fd(det["volta"]["data"])} · {n} noite{"s" if n != 1 else ""}'
 
 
+def _periodos_html(det, lado) -> str:
+    """Mais barato de manhã / tarde / noite naquele dia (no máximo 3 linhas)."""
+    ops = ((det or {}).get("periodos") or {}).get(lado) or []
+    if not ops:
+        return ""
+    itens = "".join(
+        f'<li><a href="{escape(o["link"])}" target="_blank" rel="noopener">{o["periodo"]} {o["partida"]}</a> '
+        f'<span class="muted">{escape(o["cia"])} · {_brl(o["preco"])}</span></li>' for o in ops)
+    return f'<ul class="periodos">{itens}</ul>'
+
+
 def _op_html(o) -> str:
     sk = f' <span class="tag">skiplag: bilhete até {o["skiplag_ate"]}</span>' if o.get("skiplag_ate") else ""
     return (f'<a href="{escape(o["link"])}" target="_blank" rel="noopener">{_fd(o["data"])} '
@@ -143,7 +154,8 @@ def gerar(con, cfg, caminho):
                 f'<td class="num"><b>{_brl(it["total"])}</b></td><td class="num {dcls}">{dtxt}</td>'
                 f'<td class="num">{_brl(min(hist))}</td><td>{_sparkline(serie[k])}</td>'
                 f'<td class="num">{_brl(sk["total"]) if sk else "—"}</td>'
-                f'<td>{_op_html(it["det"]["ida"])}</td><td>{_op_html(it["det"]["volta"])}</td></tr>')
+                f'<td>{_op_html(it["det"]["ida"])}{_periodos_html(it["det"], "ida")}</td>'
+                f'<td>{_op_html(it["det"]["volta"])}{_periodos_html(it["det"], "volta")}</td></tr>')
         secoes.append(
             f'<section><h2>{escape(cidade)}</h2>'
             f'<p class="muted">Menor ida+volta atual por janela. Barras escuras = entre os '
@@ -170,6 +182,7 @@ header{{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-conten
 h1{{font-size:22px;margin:0}}h2{{font-size:18px;margin:0 0 4px}}
 section{{background:var(--surface-1);border-radius:12px;padding:18px;max-width:1300px;margin:14px auto}}
 .muted{{color:var(--text-secondary);font-size:12.5px}}
+.periodos{{list-style:none;margin:4px 0 0;padding:0;font-size:12.5px;line-height:1.5}}
 .filtros{{display:flex;gap:6px}}.filtros button{{border:1px solid var(--axis);background:var(--surface-1);color:var(--text-primary);
 border-radius:999px;padding:4px 12px;cursor:pointer;font:inherit;font-size:13px}}.filtros button.on{{background:var(--text-primary);color:var(--surface-1)}}
 .chart{{width:100%;height:auto;display:block;margin:6px 0 10px}}

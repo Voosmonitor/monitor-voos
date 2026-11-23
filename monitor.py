@@ -326,6 +326,22 @@ def opcoes_skiplag(b, data, origens, alem, desembarques, partida_apos, limites):
     return out
 
 
+PERIODOS = (("manhã", 5, 12), ("tarde", 12, 18), ("noite", 18, 29))  # noite inclui madrugada (até 04:59)
+
+
+def por_periodo(ops, data: str) -> list[dict]:
+    """Voo mais barato de cada período (manhã/tarde/noite) num dia: no máximo 3 opções."""
+    def hora(o):
+        h = int(o.partida[:2])
+        return h + 24 if h < 5 else h
+    out = []
+    for nome, ini, fim in PERIODOS:
+        cand = [o for o in ops if o.data == data and ini <= hora(o) < fim]
+        if cand:
+            out.append({"periodo": nome, **asdict(min(cand, key=lambda o: o.preco))})
+    return out
+
+
 def datas_viagem(ida, volta) -> str:
     """Datas reais dos voos escolhidos, ex.: 'sex 22/01 → dom 24/01 (2 noites)'."""
     di, dv = date.fromisoformat(ida.data), date.fromisoformat(volta.data)
@@ -419,7 +435,8 @@ def coletar(cfg, janelas, con, ts) -> dict:
                 log.info("[%d/%d] %s / %s: sem par ida+volta com %d+ noites", n, len(janelas), j.rotulo, c, min_noites)
                 continue
             bi, bv = par_n
-            res = {"janela": j, "cidade": c, "normal": {"ida": bi, "volta": bv, "total": bi.preco + bv.preco}}
+            res = {"janela": j, "cidade": c, "normal": {"ida": bi, "volta": bv, "total": bi.preco + bv.preco},
+                   "periodos": {"ida": por_periodo(ni, bi.data), "volta": por_periodo(nv, bv.data)}}
             si, sv = melhor_par(idas[c], voltas[c], min_noites)
             if si.preco + sv.preco <= res["normal"]["total"] - eco_min:
                 res["skiplag"] = {"ida": si, "volta": sv, "total": si.preco + sv.preco}
@@ -432,7 +449,10 @@ def coletar(cfg, janelas, con, ts) -> dict:
             for modo in ("normal", "skiplag"):
                 if modo in res:
                     r = res[modo]
-                    det = json.dumps({"ida": asdict(r["ida"]), "volta": asdict(r["volta"])}, ensure_ascii=False)
+                    d = {"ida": asdict(r["ida"]), "volta": asdict(r["volta"])}
+                    if modo == "normal":
+                        d["periodos"] = res["periodos"]
+                    det = json.dumps(d, ensure_ascii=False)
                     con.execute("INSERT INTO totais VALUES(?,?,?,?,?,?,?,?,?,?)",
                                 (ts, j.id, j.inicio.isoformat(), j.fim.isoformat(), j.rotulo,
                                  int(j.curto), c, modo, r["total"], det))
@@ -497,6 +517,19 @@ def _linha(o: Opcao) -> str:
     return f'<a href="{escape(o.link)}">{escape(o.descr())}</a> — <b>R$ {o.preco}</b>'
 
 
+def _periodos_html(r) -> str:
+    """Linha compacta com o mais barato de manhã/tarde/noite no dia da ida e no da volta."""
+    p = r.get("periodos") or {}
+    out = []
+    for lado, nome in (("ida", "Opções na ida"), ("volta", "Opções na volta")):
+        ops = p.get(lado) or []
+        if ops:
+            itens = " · ".join(f'<a href="{escape(o["link"])}">{o["periodo"]} {o["partida"]} {escape(o["cia"])} '
+                               f'R$ {o["preco"]}</a>' for o in ops)
+            out.append(f"<br><span style='color:#555;font-size:13px'>{nome}: {itens}</span>")
+    return "".join(out)
+
+
 def montar_email(cfg, saida, alertas, sk_novos, ts) -> str:
     h = ['<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:760px">']
     link = cfg.get("link_painel")
@@ -510,7 +543,8 @@ def montar_email(cfg, saida, alertas, sk_novos, ts) -> str:
             h.append(f"<p><b>{escape(r['cidade'])} — {escape(datas_viagem(par['ida'], par['volta']))}{tag}: "
                      f"R$ {a['tot']} ida+volta</b><br><span style='color:#666'>{escape(r['janela'].rotulo)}</span>"
                      f"<br><i>{escape('; '.join(a['motivos']))}</i>"
-                     f"<br>Ida: {_linha(par['ida'])}<br>Volta: {_linha(par['volta'])}</p>")
+                     f"<br>Ida: {_linha(par['ida'])}<br>Volta: {_linha(par['volta'])}"
+                     f"{_periodos_html(r)}</p>")
     if sk_novos:
         h.append("<h2>🧳 Oportunidades de skiplag (só bagagem de mão!)</h2>")
         for s in sorted(sk_novos, key=lambda s: s["ref"] - s["op"].preco, reverse=True)[:15]:
@@ -590,13 +624,10 @@ def main():
 
     ult = meta_get(con, "ultima_completa")
     completo = args.completo or ult is None or agora - datetime.fromisoformat(ult) > timedelta(hours=20)
-    # só busca viagens a partir de data_inicio_busca; o horizonte de 1 ano continua contado a partir de hoje
+    # só busca viagens a partir de data_inicio_busca; os horizontes contam a partir dessa data
     hoje = date.today()
     base = max(hoje, date.fromisoformat(cfg.get("data_inicio_busca") or hoje.isoformat()))
-    if completo:
-        horizonte = max(cfg["horizonte_dias"] - (base - hoje).days, 0)
-    else:
-        horizonte = cfg["horizonte_prioritario_dias"]
+    horizonte = cfg["horizonte_dias"] if completo else cfg["horizonte_prioritario_dias"]  # contados a partir de base
     janelas = gerar_janelas(base, horizonte, cfg)
     if args.teste:
         janelas, completo = janelas[:2], False

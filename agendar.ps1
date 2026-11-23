@@ -1,7 +1,7 @@
-# Cria (ou atualiza) a tarefa no Agendador de Tarefas do Windows: 2x por dia.
+﻿# Cria (ou atualiza) a tarefa no Agendador de Tarefas do Windows: 2x por dia.
 # A 1a execução do dia faz a coleta completa (1 ano); a 2a só os próximos 120 dias.
-# Uso: powershell -ExecutionPolicy Bypass -File agendar.ps1 [-Horarios "07:00","19:00"]
-param([string[]]$Horarios = @("07:00", "19:00"))
+# Uso: powershell -ExecutionPolicy Bypass -File agendar.ps1 [-Horarios "09:30","16:00"]
+param([string[]]$Horarios = @("09:30", "16:00"))
 
 $pasta = Split-Path -Parent $MyInvocation.MyCommand.Path
 $acao = New-ScheduledTaskAction -Execute "$pasta\rodar.bat" -WorkingDirectory $pasta
