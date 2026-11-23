@@ -18,11 +18,12 @@ def _brl(v) -> str:
     return "—" if v is None else f"R$ {v:,.0f}".replace(",", ".")
 
 
-def _carregar(con):
+def _carregar(con, inicio_min=None):
     hoje = date.today().isoformat()
     rows = con.execute(
         "SELECT coletado_em, janela, inicio, fim, rotulo, curto, cidade, modo, total, detalhe "
-        "FROM totais WHERE fim >= ? ORDER BY coletado_em", (hoje,)).fetchall()
+        "FROM totais WHERE fim >= ? AND inicio >= ? ORDER BY coletado_em",
+        (hoje, inicio_min or "")).fetchall()
     serie = defaultdict(list)
     ultimo = {}
     for ts, jid, ini, fim, rot, curto, cid, modo, tot, det in rows:
@@ -90,6 +91,14 @@ def _grafico(itens, teto) -> str:
     return "".join(p)
 
 
+def _viagem(det) -> str:
+    """Datas reais dos voos do par, ex.: 'sex 22/jan → dom 24/jan · 2 noites'."""
+    if not det:
+        return "—"
+    n = (date.fromisoformat(det["volta"]["data"]) - date.fromisoformat(det["ida"]["data"])).days
+    return f'{_fd(det["ida"]["data"])} → {_fd(det["volta"]["data"])} · {n} noite{"s" if n != 1 else ""}'
+
+
 def _op_html(o) -> str:
     sk = f' <span class="tag">skiplag: bilhete até {o["skiplag_ate"]}</span>' if o.get("skiplag_ate") else ""
     return (f'<a href="{escape(o["link"])}" target="_blank" rel="noopener">{_fd(o["data"])} '
@@ -98,7 +107,7 @@ def _op_html(o) -> str:
 
 
 def gerar(con, cfg, caminho):
-    serie, ultimo = _carregar(con)
+    serie, ultimo = _carregar(con, cfg.get("data_inicio_busca"))
     teto = cfg.get("teto_fim_de_semana_curto")
     pct = cfg.get("alertas", {}).get("faixa_barata_percentil", 20) / 100
     atualizado = max((u["ts"] for u in ultimo.values()), default=None)
@@ -129,7 +138,8 @@ def gerar(con, cfg, caminho):
             dtxt = "—" if not delta else f"{'▼' if delta < 0 else '▲'} {_brl(abs(delta))}"
             linhas.append(
                 f'<tr class="{"hotrow" if it["barato"] else ""}" data-tipo="{"curto" if it["curto"] else "feriado"}">'
-                f'<td><b>{escape(it["rotulo"])}</b>{" <span class=tag>barato</span>" if it["barato"] else ""}</td>'
+                f'<td><b>{escape(_viagem(it["det"]))}</b>{" <span class=tag>barato</span>" if it["barato"] else ""}'
+                f'<div class="muted">{escape(it["rotulo"])}</div></td>'
                 f'<td class="num"><b>{_brl(it["total"])}</b></td><td class="num {dcls}">{dtxt}</td>'
                 f'<td class="num">{_brl(min(hist))}</td><td>{_sparkline(serie[k])}</td>'
                 f'<td class="num">{_brl(sk["total"]) if sk else "—"}</td>'

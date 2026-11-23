@@ -326,6 +326,13 @@ def opcoes_skiplag(b, data, origens, alem, desembarques, partida_apos, limites):
     return out
 
 
+def datas_viagem(ida, volta) -> str:
+    """Datas reais dos voos escolhidos, ex.: 'sex 22/01 → dom 24/01 (2 noites)'."""
+    di, dv = date.fromisoformat(ida.data), date.fromisoformat(volta.data)
+    n = (dv - di).days
+    return f"{fmt_data(di)} → {fmt_data(dv)} ({n} noite{'s' if n != 1 else ''})"
+
+
 def melhor_par(idas, voltas, min_noites):
     """Par ida+volta mais barato com pelo menos min_noites entre as datas (evita bate-volta e ida num dia/volta no seguinte)."""
     melhor = None
@@ -430,8 +437,9 @@ def coletar(cfg, janelas, con, ts) -> dict:
                                 (ts, j.id, j.inicio.isoformat(), j.fim.isoformat(), j.rotulo,
                                  int(j.curto), c, modo, r["total"], det))
             resultados.append(res)
-            log.info("[%d/%d] %s / %s: R$ %d%s", n, len(janelas), j.rotulo, c, res["normal"]["total"],
-                     f" (skiplag R$ {res['skiplag']['total']})" if "skiplag" in res else "")
+            log.info("[%d/%d] %s / %s: R$ %d — voo %s%s", n, len(janelas), j.rotulo, c, res["normal"]["total"],
+                     datas_viagem(bi, bv),
+                     f" (skiplag R$ {res['skiplag']['total']}: {datas_viagem(si, sv)})" if "skiplag" in res else "")
         con.commit()
     log.info("buscas: %d, falhas: %d", b.n_buscas, b.n_falhas)
     return {"resultados": resultados, "skiplags": skiplags, "buscas": b.n_buscas, "falhas": b.n_falhas}
@@ -499,7 +507,8 @@ def montar_email(cfg, saida, alertas, sk_novos, ts) -> str:
         for a in sorted(alertas, key=lambda a: a["r"]["janela"].inicio):
             r, par = a["r"], a["r"][a["modo"]]
             tag = " · usando skiplag" if a["modo"] == "skiplag" else ""
-            h.append(f"<p><b>{escape(r['cidade'])} — {escape(r['janela'].rotulo)}{tag}: R$ {a['tot']} ida+volta</b>"
+            h.append(f"<p><b>{escape(r['cidade'])} — {escape(datas_viagem(par['ida'], par['volta']))}{tag}: "
+                     f"R$ {a['tot']} ida+volta</b><br><span style='color:#666'>{escape(r['janela'].rotulo)}</span>"
                      f"<br><i>{escape('; '.join(a['motivos']))}</i>"
                      f"<br>Ida: {_linha(par['ida'])}<br>Volta: {_linha(par['volta'])}</p>")
     if sk_novos:
@@ -581,8 +590,14 @@ def main():
 
     ult = meta_get(con, "ultima_completa")
     completo = args.completo or ult is None or agora - datetime.fromisoformat(ult) > timedelta(hours=20)
-    horizonte = cfg["horizonte_dias"] if completo else cfg["horizonte_prioritario_dias"]
-    janelas = gerar_janelas(date.today(), horizonte, cfg)
+    # só busca viagens a partir de data_inicio_busca; o horizonte de 1 ano continua contado a partir de hoje
+    hoje = date.today()
+    base = max(hoje, date.fromisoformat(cfg.get("data_inicio_busca") or hoje.isoformat()))
+    if completo:
+        horizonte = max(cfg["horizonte_dias"] - (base - hoje).days, 0)
+    else:
+        horizonte = cfg["horizonte_prioritario_dias"]
+    janelas = gerar_janelas(base, horizonte, cfg)
     if args.teste:
         janelas, completo = janelas[:2], False
     log.info("coleta %s: %d janelas até %s", "COMPLETA" if completo else "prioritária",
