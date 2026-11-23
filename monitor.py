@@ -515,15 +515,18 @@ def montar_email(cfg, saida, alertas, sk_novos, ts) -> str:
 
 def carregar_credenciais() -> dict | None:
     """GitHub Actions: variáveis de ambiente (Secrets). Local: credenciais.json."""
+    limpar = lambda v: (v or "").replace("﻿", "").strip()  # BOM/espaços colados por engano
     if os.environ.get("GMAIL_SENHA_APP"):
-        return {"gmail_remetente": os.environ["GMAIL_REMETENTE"],
+        cred = {"gmail_remetente": os.environ["GMAIL_REMETENTE"],
                 "senha_de_app": os.environ["GMAIL_SENHA_APP"],
                 "destinatario": os.environ["EMAIL_DESTINO"]}
-    p = BASE / "credenciais.json"
-    if not p.exists():
-        return None
-    cred = json.loads(p.read_text(encoding="utf-8"))
-    return cred if cred.get("senha_de_app", "").strip() else None
+    else:
+        p = BASE / "credenciais.json"
+        if not p.exists():
+            return None
+        cred = json.loads(p.read_text(encoding="utf-8-sig"))
+    cred = {k: limpar(v) if isinstance(v, str) else v for k, v in cred.items()}
+    return cred if cred.get("senha_de_app") else None
 
 
 def podar_db(con):
