@@ -572,6 +572,36 @@ def carregar_credenciais() -> dict | None:
     return cred if cred.get("senha_de_app") else None
 
 
+def publicar_github(cfg, ts):
+    """Coleta local → publica o painel (branch "painel", servida pelo GitHub Pages) e faz backup do
+    histórico (branch "dados"). Falha aqui só gera aviso: não atrapalha a coleta nem o e-mail."""
+    import shutil, subprocess, tempfile
+    pub = cfg.get("publicar_github") or {}
+    if not pub.get("ativo") or os.environ.get("GITHUB_ACTIONS"):
+        return
+    git = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
+    url = f"https://github.com/{pub['repo']}.git"
+    envios = {"painel": {"index.html": BASE / "painel.html", ".nojekyll": None},
+              "dados": {"historico.db": DB_PATH}}
+    for branch, arquivos in envios.items():
+        try:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+                for nome, src in arquivos.items():
+                    if src:
+                        shutil.copy(src, Path(d) / nome)
+                    else:
+                        (Path(d) / nome).write_text("")
+                for args in (["init", "-q", "-b", branch], ["add", "-A"],
+                             ["-c", f"user.name={pub.get('nome', 'monitor-bot')}",
+                              "-c", f"user.email={pub['email']}", "commit", "-q", "-m", f"{branch} {ts}"],
+                             ["push", "-q", "--force", url, branch]):
+                    subprocess.run([git, *args], cwd=d, check=True, capture_output=True, text=True, timeout=300)
+            log.info("GitHub: branch %s publicada", branch)
+        except Exception as e:
+            err = getattr(e, "stderr", "") or e
+            log.warning("GitHub: falha ao publicar %s: %s", branch, str(err).strip()[:300])
+
+
 def podar_db(con):
     """Mantém o detalhe (links/horários) só da coleta mais recente de cada janela; o resto fica só o preço."""
     con.execute("UPDATE totais SET detalhe=NULL WHERE detalhe IS NOT NULL AND rowid NOT IN "
@@ -644,6 +674,8 @@ def main():
         cfg["link_painel"] = os.environ["PAINEL_URL"]
     painel.gerar(con, cfg, BASE / "painel.html")
     log.info("painel atualizado: %s", BASE / "painel.html")
+    if not args.teste:
+        publicar_github(cfg, ts)
 
     if not saida["resultados"]:
         log.error("nenhum resultado — o Google pode ter bloqueado ou mudado o site")
