@@ -573,16 +573,30 @@ def carregar_credenciais() -> dict | None:
 
 
 def publicar_github(cfg, ts):
-    """Coleta local → publica o painel (branch "painel", servida pelo GitHub Pages) e faz backup do
-    histórico (branch "dados"). Falha aqui só gera aviso: não atrapalha a coleta nem o e-mail."""
+    """Coleta local → publica o painel no Cloudflare Pages (protegido por senha, ver cloudflare/) e faz
+    backup do histórico no GitHub (branch "dados", repositório privado). Falha aqui só gera aviso:
+    não atrapalha a coleta nem o e-mail."""
     import shutil, subprocess, tempfile
     pub = cfg.get("publicar_github") or {}
     if not pub.get("ativo") or os.environ.get("GITHUB_ACTIONS"):
         return
+    projeto_cf = pub.get("painel_cloudflare")
+    if projeto_cf:
+        try:
+            npx = shutil.which("npx") or r"C:\Program Files\nodejs\npx.cmd"
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+                shutil.copy(BASE / "painel.html", Path(d) / "index.html")
+                subprocess.run([npx, "--yes", "wrangler", "pages", "deploy", d, "--project-name", projeto_cf,
+                                "--branch", "main", "--commit-dirty=true"],
+                               cwd=BASE / "cloudflare", check=True, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=300)
+            log.info("Cloudflare: painel publicado (%s)", projeto_cf)
+        except Exception as e:
+            err = getattr(e, "stderr", "") or getattr(e, "stdout", "") or e
+            log.warning("Cloudflare: falha ao publicar o painel: %s", str(err).strip()[-300:])
     git = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
     url = f"https://github.com/{pub['repo']}.git"
-    envios = {"painel": {"index.html": BASE / "painel.html", ".nojekyll": None},
-              "dados": {"historico.db": DB_PATH}}
+    envios = {"dados": {"historico.db": DB_PATH}}
     for branch, arquivos in envios.items():
         try:
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:

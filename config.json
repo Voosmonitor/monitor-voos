@@ -35,10 +35,11 @@
     "grupos_alem_de_sp": [["POA", "CWB", "FLN", "IGU", "CGR", "NVT"]]
   },
 
-  "link_painel": "https://vbranco6.github.io/monitor-voos/",
+  "link_painel": "https://monitor-voos.pages.dev/",
   "publicar_github": {
     "ativo": true,
     "repo": "vbranco6/monitor-voos",
+    "painel_cloudflare": "monitor-voos",
     "nome": "vbranco6",
     "email": "360815508+vbranco6@users.noreply.github.com"
   },

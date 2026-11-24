@@ -5,8 +5,8 @@ Monitor pessoal de preços de passagens SP ↔ Salvador/Rio. Python (venv + pars
 Este arquivo é a memória do projeto: tudo o que foi combinado com o usuário até 2026-11-24, migrado das notas locais do Claude do PC corporativo. Mantenha-o atualizado quando algo novo for decidido.
 
 ## Repositório e máquinas (desde 2026-11-24)
-- Repositório: GitHub `vbranco6/monitor-voos` (público — necessário para o GitHub Pages gratuito; o código não tem senhas). Transferido da conta `Voosmonitor` em 2026-11-24.
-- Painel: `https://vbranco6.github.io/monitor-voos/` (antes `voosmonitor.github.io/monitor-voos`).
+- Repositório: GitHub `vbranco6/monitor-voos`, PRIVADO (o usuário não quer o código visível). Transferido da conta `Voosmonitor` em 2026-11-24.
+- Painel: `https://monitor-voos.pages.dev/` no Cloudflare Pages (mesma conta Cloudflare do Market Picks), protegido por senha (Basic Auth em `cloudflare/functions/_middleware.js`, segredo `PAINEL_SENHA` = a mesma senha do editor do Market Picks, que o usuário guarda no celular). Trocar: `npx wrangler pages secret put PAINEL_SENHA --project-name monitor-voos` (rodar dentro de `cloudflare/`) + nova publicação. Endereços antigos (`voosmonitor.github.io`, `vbranco6.github.io`) não existem mais.
 - PC corporativo = estação principal: roda a tarefa agendada "Monitor de Voos" (`rodar.bat`, 09:30 e 16:00, criada por `agendar.ps1`). PC pessoal = estação secundária: só trabalho interativo e execuções manuais com `--teste`. **Nunca agendar em dois PCs ao mesmo tempo** (e-mails duplicados). Migrar só quando o usuário pedir.
 - Sempre `git pull` antes de começar e commit + push ao terminar. Commits com o e-mail noreply do GitHub, nunca o Gmail do usuário.
 - Fora do git: `credenciais.json` (Gmail remetente, senha de app, destinatário — criar à mão em cada PC a partir de `credenciais.exemplo.json`; nunca commitar nem mostrar a senha), `historico.db` (backup na branch `dados`), `.venv`, logs, HTMLs gerados.
@@ -27,7 +27,7 @@ Este arquivo é a memória do projeto: tudo o que foi combinado com o usuário a
 - Por dia de viagem, no máximo 3 voos: o mais barato de manhã (05–12), tarde (12–18) e noite (18–05). `por_periodo` / PERIODOS. Mostrado no e-mail e no painel.
 - E-mail, log e painel mostram as datas reais dos voos e o número de noites (o rótulo da janela, ex. "sáb a dom", não é o voo).
 - Roda no PC local (escolha efetiva). O workflow do GitHub Actions fica DESATIVADO: a partir de IPs do Actions o Google Flights devolve `errorHasStatus: true` intermitente (bloqueio leve), enquanto local funciona.
-- Toda execução local (exceto `--teste`) chama `publicar_github` (config `publicar_github` em config.json): force-push de painel.html como index.html na branch `painel` (Pages = "deploy from branch: painel") e de historico.db na branch `dados`. Autenticação git via credential helper do `gh` — a conta ativa do `gh` precisa ter acesso ao repositório.
+- Toda execução local (exceto `--teste`) chama `publicar_github` (config `publicar_github` em config.json): publica painel.html no Cloudflare Pages via `npx wrangler pages deploy` (cwd `cloudflare/`, para levar o middleware de senha; precisa de Node e `npx wrangler login` no PC) e faz force-push de historico.db na branch `dados` do GitHub (autenticação via credential helper do `gh` — a conta ativa precisa ser vbranco6). A branch `painel` e o GitHub Pages foram abandonados em 2026-11-24.
 - `monitor.py` remove BOM/espaços das credenciais (PowerShell 5.1 adicionava BOM ao passar segredos por pipe; usar `gh secret set --body`).
 
 ## Notas técnicas (2026-11-11)
