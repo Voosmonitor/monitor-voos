@@ -6,7 +6,8 @@ Uso:
     python monitor.py               # decide sozinho: coleta completa (1 ano) 1x/dia, senão só próximos 120 dias
     python monitor.py --completo    # força coleta do ano inteiro
     python monitor.py --sem-email   # não envia e-mail (gera painel normalmente)
-    python monitor.py --teste       # só as 2 próximas janelas
+    python monitor.py --teste       # só as 2 próximas janelas (sem os trechos avulsos)
+    python monitor.py --so-trechos  # só os trechos avulsos só de ida (config "trechos")
 """
 
 import argparse
@@ -33,6 +34,7 @@ from fast_flights.pb.flights_pb2 import Airport, FlightData, Info, Passenger, Se
 from primp import Client
 
 import painel
+import trechos
 
 BASE = Path(__file__).resolve().parent
 DB_PATH = BASE / "historico.db"
@@ -530,11 +532,17 @@ def _periodos_html(r) -> str:
     return "".join(out)
 
 
-def montar_email(cfg, saida, alertas, sk_novos, ts) -> str:
+def link_gf(data, origens, destinos, partida_apos=None) -> str:
+    """Link do Google Flights (só ida, qualquer nº de paradas) para os trechos avulsos."""
+    return f"{GF_URL}/search?tfs={quote(montar_tfs(data, origens, destinos, None, partida_apos))}&hl=pt-BR&curr=BRL"
+
+
+def montar_email(cfg, saida, alertas, sk_novos, ts, tr_alertas=None) -> str:
     h = ['<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:760px">']
     link = cfg.get("link_painel")
     if link:
         h.append(f'<p><a href="{escape(link)}">📊 Abrir painel completo</a></p>')
+    h.append(trechos.email_html(tr_alertas or []))
     if alertas:
         h.append("<h2>🔔 Mudanças de preço</h2>")
         for a in sorted(alertas, key=lambda a: a["r"]["janela"].inicio):
@@ -640,6 +648,7 @@ def main():
     ap.add_argument("--teste", action="store_true")
     ap.add_argument("--completo", action="store_true")
     ap.add_argument("--testar-email", action="store_true")
+    ap.add_argument("--so-trechos", action="store_true", help="só os trechos avulsos (config 'trechos')")
     args = ap.parse_args()
 
     if args.testar_email:
@@ -675,9 +684,16 @@ def main():
     janelas = gerar_janelas(base, horizonte, cfg)
     if args.teste:
         janelas, completo = janelas[:2], False
+    if args.so_trechos:
+        janelas, completo = [], False
+
+    # trechos avulsos só de ida (datas fixas, ex.: SP → Salvador no Natal): buscados em toda execução
+    tr_saida = {"resultados": []}
+    if cfg.get("trechos") and not args.teste:
+        tr_saida = trechos.coletar(cfg, con, ts, link_gf)
+
     log.info("coleta %s: %d janelas até %s", "COMPLETA" if completo else "prioritária",
              len(janelas), janelas[-1].fim if janelas else "-")
-
     saida = coletar(cfg, janelas, con, ts)
     if completo and saida["resultados"]:
         meta_set(con, "ultima_completa", ts)
@@ -691,16 +707,27 @@ def main():
     if not args.teste:
         publicar_github(cfg, ts)
 
-    if not saida["resultados"]:
-        log.error("nenhum resultado — o Google pode ter bloqueado ou mudado o site")
+    if not saida["resultados"] and not tr_saida["resultados"]:
+        if janelas:
+            log.error("nenhum resultado — o Google pode ter bloqueado ou mudado o site")
         return
     alertas, sk_novos, chaves = decidir_alertas(cfg, con, ts, saida)
-    log.info("%d alertas de preço, %d skiplags novos", len(alertas), len(sk_novos))
-    if not (alertas or sk_novos):
+    tr_alertas, tr_chaves = trechos.decidir_alertas(cfg, con, ts, tr_saida)
+    chaves += tr_chaves
+    log.info("%d alertas de preço, %d skiplags novos, %d alertas de trechos",
+             len(alertas), len(sk_novos), len(tr_alertas))
+    if not (alertas or sk_novos or tr_alertas):
         return
 
-    html = montar_email(cfg, saida, alertas, sk_novos, ts)
-    if alertas:
+    saida["buscas"] += tr_saida.get("buscas", 0)
+    saida["falhas"] += tr_saida.get("falhas", 0)
+    html = montar_email(cfg, saida, alertas, sk_novos, ts, tr_alertas)
+    if tr_alertas:
+        m = min(tr_alertas, key=lambda a: a["preco"])
+        assunto = (f"🎄 {m['r']['trecho']['nome']}: R$ {m['preco']} em {m['r']['data'][8:]}/{m['r']['data'][5:7]} "
+                   f"({trechos.NOME_MODO[m['modo']]})"
+                   + (f" + {len(alertas)} mudança(s) de preço" if alertas else ""))
+    elif alertas:
         m = min(alertas, key=lambda a: a["tot"])
         assunto = (f"✈️ {len(alertas)} mudança(s) de preço — {m['r']['cidade']} R$ {m['tot']} "
                    f"({m['r']['janela'].nome}, {m['r']['janela'].inicio:%d/%m})")

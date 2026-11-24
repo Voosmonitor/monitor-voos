@@ -5,6 +5,8 @@ from collections import defaultdict
 from datetime import date, datetime
 from html import escape
 
+import trechos
+
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 
@@ -208,6 +210,7 @@ border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 4px 14px rgba(0
 <div class="muted">Atualizado em {upd} · preços do Google Flights, 1 adulto, só ida por trecho, voos diretos, sem bagagem despachada</div></div>
 <div class="filtros" role="group" aria-label="Filtrar janelas">
 <button class="on" data-f="todos">Todas</button><button data-f="feriado">Feriados</button><button data-f="curto">Fins de semana</button></div></header>
+{trechos.painel_html(con, cfg)}
 {"".join(secoes)}
 <div id="tip" role="tooltip"></div>
 <script>
@@ -219,6 +222,6 @@ document.querySelectorAll('.hit').forEach(g=>{{
   g.addEventListener('mouseleave',()=>tip.style.display='none');}});
 document.querySelectorAll('.filtros button').forEach(b=>b.addEventListener('click',()=>{{
   document.querySelectorAll('.filtros button').forEach(x=>x.classList.toggle('on',x===b));
-  document.querySelectorAll('tbody tr').forEach(tr=>tr.style.display=(b.dataset.f==='todos'||tr.dataset.tipo===b.dataset.f)?'':'none');}}));
+  document.querySelectorAll('tbody tr[data-tipo]').forEach(tr=>tr.style.display=(b.dataset.f==='todos'||tr.dataset.tipo===b.dataset.f)?'':'none');}}));
 </script></body></html>"""
     caminho.write_text(html, encoding="utf-8")

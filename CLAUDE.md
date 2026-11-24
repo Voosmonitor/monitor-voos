@@ -30,6 +30,15 @@ Este arquivo é a memória do projeto: tudo o que foi combinado com o usuário a
 - Toda execução local (exceto `--teste`) chama `publicar_github` (config `publicar_github` em config.json): publica painel.html no Cloudflare Pages via `npx wrangler pages deploy` (cwd `cloudflare/`, para levar o middleware de senha; precisa de Node e `npx wrangler login` no PC) e faz force-push de historico.db na branch `dados` do GitHub (autenticação via credential helper do `gh` — a conta ativa precisa ser vbranco6). A branch `painel` e o GitHub Pages foram abandonados em 2026-11-24.
 - `monitor.py` remove BOM/espaços das credenciais (PowerShell 5.1 adicionava BOM ao passar segredos por pipe; usar `gh secret set --body`).
 
+## Trechos avulsos só de ida (pedido de 2026-11-24)
+- Além das janelas de ida+volta, o usuário quer monitorar **só a ida SP (CGH/GRU/VCP) → Salvador de 18/12/2026 (após 18h) a 23/12/2026**. É uma exceção ao `data_inicio_busca`.
+- Fica em config.json → `trechos` (lista; dá para adicionar outros). Código em `trechos.py`. Roda em toda execução agendada (≈78 buscas, ~5 min), e também com `monitor.py --so-trechos`. `--teste` não roda trechos. Dias passados são pulados sozinhos.
+- Usa o RPC `GetShoppingResults` com "mostrar tudo" (até 300 itinerários, inclui conexões). Por dia guarda em `trechos_hist`: `normal` (mais barato, com conexão), `direto`, `skiplag` (bilhete para REC/FOR/AJU/MCZ/NAT/JPA/BPS/SLZ/THE/BEL/MAO/VDC com parada em SSA; top 5 no detalhe) e o mais barato por período.
+- Alertas: queda/recorde (mesmas regras) por dia e modo, mais "skiplag mais barato que o normal" (≥ R$ 60). Vão no e-mail normal (seção 🎄) e no topo do painel.
+- O filtro `via` do RPC não funcionou (devolvia voos diretos), e destinos com vários aeroportos + "mostrar tudo" devolvem 0. Por isso a busca é feita destino por destino, filtrando as paradas em SSA.
+- Primeira coleta (24/11, 18h): o mais barato normal ficou em R$ 927–1.416 e o direto em R$ 1.289–1.580. O skiplag Gol VCP→SSA (G3 1935, bilhete até Paulo Afonso/BPS) saiu R$ 965, num voo direto até SSA.
+- Milhas (Smiles/LATAM Pass): o usuário pediu em 2026-11-24. A consulta automática às APIs foi barrada pelo classificador de permissões (chave de API do site + acesso automatizado). Está pendente da decisão do usuário.
+
 ## Notas técnicas (2026-11-11)
 - O parser do fast-flights lê só "other flights" (payload[3]); os mais baratos costumam estar em "best flights" (payload[2]). `parse_tudo` junta os dois. Preços gravados antes de 2026-11-11 estão superestimados.
 - A página HTML esconde a maioria das conexões; o motor skiplag próprio perde várias. Lista completa vem de POST ao RPC `GetShoppingResults` com cauda `1,1,0,2` (segundo valor 1 = mostrar tudo), usando primp. Usado avulso (busca SP→SSA 21–23/12); ainda não portado para monitor.py.
@@ -37,7 +46,7 @@ Este arquivo é a memória do projeto: tudo o que foi combinado com o usuário a
 
 ## Roadmap
 - Fase 1 (atual): Google Flights para tarifas normais + motor skiplag próprio. A API do skiplagged.com dá 403 para scripts.
-- Fase 2 (só quando o usuário pedir): sites de milhas (Smiles, LATAM Pass, TudoAzul etc.).
+- Fase 2: sites de milhas (Smiles, LATAM Pass, TudoAzul etc.). O usuário pediu Smiles + LATAM Pass em 2026-11-24 (ver "Trechos avulsos"); o acesso automático foi bloqueado e está pendente.
 - Ideias de produto futuras (não iniciadas; uso pessoal vem primeiro): grupo pago de WhatsApp com alertas (sem API oficial simples; Telegram suporta canais pagos — fallback e base futura), site comparando dinheiro vs milhas vs misto. Riscos levantados: termos de uso/bloqueio ao raspar Google Flights e sites de milhas; repositório público expõe o código. Construir o envio de alertas como notificadores plugáveis.
 
 ## Preferências gerais do usuário (valem para qualquer trabalho)

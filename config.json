@@ -35,6 +35,20 @@
     "grupos_alem_de_sp": [["POA", "CWB", "FLN", "IGU", "CGR", "NVT"]]
   },
 
+  "trechos": [
+    {
+      "nome": "Natal: SP → Salvador",
+      "ativo": true,
+      "origens": ["CGH", "GRU", "VCP"],
+      "destinos": ["SSA"],
+      "data_inicio": "2026-12-18",
+      "data_fim": "2026-12-23",
+      "partida_apos": { "2026-12-18": 18 },
+      "skiplag_alem": [["REC", "FOR", "AJU", "MCZ", "NAT", "JPA"], ["BPS", "SLZ", "THE", "BEL", "MAO", "VDC"]],
+      "skiplag_economia_minima_reais": 60
+    }
+  ],
+
   "link_painel": "https://monitor-voos.pages.dev/",
   "publicar_github": {
     "ativo": true,
