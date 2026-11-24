@@ -35,12 +35,12 @@
     "grupos_alem_de_sp": [["POA", "CWB", "FLN", "IGU", "CGR", "NVT"]]
   },
 
-  "link_painel": "https://voosmonitor.github.io/monitor-voos/",
+  "link_painel": "https://vbranco6.github.io/monitor-voos/",
   "publicar_github": {
     "ativo": true,
-    "repo": "Voosmonitor/monitor-voos",
-    "nome": "Voosmonitor",
-    "email": "360417080+Voosmonitor@users.noreply.github.com"
+    "repo": "vbranco6/monitor-voos",
+    "nome": "vbranco6",
+    "email": "360815508+vbranco6@users.noreply.github.com"
   },
   "pausa_entre_buscas_seg": [2, 4]
 }
