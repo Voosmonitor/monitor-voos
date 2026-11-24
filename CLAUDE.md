@@ -39,3 +39,9 @@ Este arquivo é a memória do projeto: tudo o que foi combinado com o usuário a
 - Fase 1 (atual): Google Flights para tarifas normais + motor skiplag próprio. A API do skiplagged.com dá 403 para scripts.
 - Fase 2 (só quando o usuário pedir): sites de milhas (Smiles, LATAM Pass, TudoAzul etc.).
 - Ideias de produto futuras (não iniciadas; uso pessoal vem primeiro): grupo pago de WhatsApp com alertas (sem API oficial simples; Telegram suporta canais pagos — fallback e base futura), site comparando dinheiro vs milhas vs misto. Riscos levantados: termos de uso/bloqueio ao raspar Google Flights e sites de milhas; repositório público expõe o código. Construir o envio de alertas como notificadores plugáveis.
+
+## Preferências gerais do usuário (valem para qualquer trabalho)
+- Conversar em português, de forma simples e direta.
+- Todo arquivo que produzirmos juntos (documentos, scripts, resultados) fica salvo dentro da pasta do projeto, para ir ao GitHub — nunca só em pasta temporária ou scratchpad. Arquivo descartável de teste pode ficar no temporário.
+- Entregáveis em formato de planilha (listas para revisar, exportações, relatórios): sempre **.xlsx**, nunca .csv, a menos que o usuário peça CSV. (Pedido de 2026-07-31: "Da próxima vez, gere um arquivo xlsx e não csv".)
+- Toda instrução ou decisão nova do usuário vai para este CLAUDE.md (e para a memória do Claude) e é enviada ao GitHub na mesma sessão, para os dois PCs ficarem com as mesmas regras.
