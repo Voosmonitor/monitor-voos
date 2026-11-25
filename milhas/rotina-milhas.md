@@ -31,7 +31,30 @@ const voos=s.split('Selecionar tarifa').map(c=>{
 JSON.stringify({faixa,voos})
 ```
    O script clica em "Menor preço" (só muda a ordem da lista, não compra nada). Sem isso, só carregam os 10 primeiros voos na ordem "relevante" e as conexões mais baratas ficam de fora. Se voltar sem voos, espere 10 s e rode de novo uma vez. A `faixa` traz o menor preço de cada dia da barra de datas. Guarde-a também, porque ela serve de conferência.
-3. LATAM PASS: para cada busca latam, navegue até a url e espere uns 10 s. Se o endereço for para auth.latamairlines.com ou a página pedir login, marque `"status": "precisa login"` para a LATAM e PULE as outras buscas latam. Se aparecerem resultados, extraia de cada voo (lendo document.body.innerText com JavaScript ou get_page_text): companhia, aeroporto e hora de saída, aeroporto e hora de chegada, número de paradas, milhas (pontos) e taxas em R$ (se houver). Role a página para carregar tudo.
+3. LATAM PASS: para cada busca latam, navegue até a url e rode este JavaScript (javascript_tool). NÃO devolva `location.href` (a extensão bloqueia por ter query string); o script já informa onde está:
+```
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const main=()=>(document.querySelector('main')?.innerText||'');
+for(let i=0;i<45&&!/Duração|não encontramos|sem voos disponíveis/i.test(main());i++) await sleep(1000);
+const host=location.host, busca=location.pathname.includes('oferta-voos');
+for(let i=0;i<6;i++){window.scrollTo(0,document.body.scrollHeight);await sleep(1200);}
+const t=main().replace(/[\u00a0\u202f]/g,' ').replace(/\n+/g,' | ');
+const vist=new Set();
+const voos=t.split('Ver opções de tarifa para este voo').map(c=>{
+ const a=c.match(/\| (\d\d:\d\d) \| ([A-Z]{3}) \| Duração \| ([^|]+) \| (\d\d:\d\d)[^|]*\| ([A-Z]{3}) \|/);
+ const m=c.match(/([\d.]+) milhas \| \+ BRL ([\d.]+,\d\d)/);
+ const p=c.match(/\| (Direto|\d+ paradas?|\d+ escalas?|\d+ conex\S+) \|/i);
+ const op=c.match(/Operado pela \| ([^|]+)/);
+ if(!a||!m) return null;
+ const k=a[2]+a[1]+a[5]+a[4]+m[1]; if(vist.has(k)) return null; vist.add(k);
+ return {cia:op?op[1].trim():null,de:a[2],sai:a[1],para:a[5],chega:a[4],dur:a[3].trim(),
+  paradas:p?(/direto/i.test(p[1])?0:parseInt(p[1])):null,milhas:+m[1].replace(/\./g,''),
+  taxas:+m[2].replace(/\./g,'').replace(',','.')};}).filter(Boolean);
+JSON.stringify({host,busca,logado:!/\| Entrar \|/.test(document.body.innerText.replace(/\n+/g,' | ')),voos})
+```
+   - Se `host` for auth.latamairlines.com, ou `logado` for false e não vier voo: marque `"status": "precisa login"` para a LATAM e PULE as outras buscas latam.
+   - Se `busca` for false (a LATAM às vezes joga para a página inicial na primeira abertura): navegue de novo até a mesma url e rode o script outra vez (uma vez só).
+   - Se vier sem voos, espere 10 s e rode de novo uma vez. Na LATAM não existe `faixa`: use `"faixa_min": null`.
 4. Feche a aba que abriu.
 5. Grave com a ferramenta Write o arquivo `milhas\coleta\<AAAA-MM-DD_HHMM>.json` (data e hora de agora) neste formato:
 ```
