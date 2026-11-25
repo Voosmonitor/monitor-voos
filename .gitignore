@@ -7,3 +7,5 @@ painel.html
 ultimo_email.html
 ultimo_relatorio.html
 site/
+milhas/logs/
+.wrangler/

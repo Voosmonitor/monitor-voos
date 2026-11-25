@@ -18,6 +18,8 @@ from html import escape
 
 from primp import Client
 
+import milhas
+
 log = logging.getLogger("monitor")
 
 RPC_URL = ("https://www.google.com/_/FlightsFrontendUi/data/"
@@ -34,6 +36,36 @@ def _fd(s: str) -> str:
 
 def _brl(v) -> str:
     return "—" if v is None else f"R$ {v:,.0f}".replace(",", ".")
+
+
+PROGRAMAS = {"smiles": "Smiles", "latam": "LATAM Pass"}
+MODOS = ("normal", "direto", "skiplag", "smiles", "latam")
+
+
+def _val(modo, v) -> str:
+    if modo in PROGRAMAS:
+        return "—" if v is None else f"{v:,.0f} milhas".replace(",", ".")
+    return _brl(v)
+
+
+def _op_milhas(v, data, url, milheiro=None) -> "OpTrecho":
+    """milheiro = quanto custa (para você) cada 1.000 milhas, em R$ — config "valor_milheiro"."""
+    partes = []
+    if milheiro:
+        partes.append(f"≈ {_brl(v['milhas'] / 1000 * milheiro + (v.get('taxas') or 0))} "
+                      f"(milheiro R$ {milheiro:g}{' + taxas' if v.get('taxas') else ''})")
+    if v.get("reais"):
+        partes.append(f"no site: ou {_brl(v['reais'])} em dinheiro")
+    elif v.get("taxas") and not milheiro:
+        partes.append(f"+ taxas {_brl(v['taxas'])}")
+    extra = " · ".join(partes)
+    par = v.get("paradas")
+    return OpTrecho(data=data, preco=int(v["milhas"]), cia=v.get("cia", ""), de=v.get("de", ""),
+                    para=v.get("para", ""), partida=v.get("sai", ""), chegada=v.get("chega", ""),
+                    chegada_data=data, paradas=par or 0, voos=extra,
+                    rota=f"{v.get('de', '')} → {v.get('para', '')}" +
+                    ("" if par is None else " (direto)" if par == 0 else f" ({par} parada{'s' if par > 1 else ''})"),
+                    link=url)
 
 
 def _hm(v) -> str:
@@ -166,6 +198,14 @@ def coletar(cfg, con, ts, link_fn, hoje=None) -> dict:
     con.execute("CREATE INDEX IF NOT EXISTS ix_trechos ON trechos_hist(trecho, data, modo, coletado_em)")
     b = BuscadorRPC(tuple(cfg.get("pausa_entre_buscas_seg", [2, 4])))
     resultados = []
+    mil = milhas.ultima_coleta()
+    urls = {(x["trecho"], x["programa"], x["data"]): x["url"] for x in milhas.buscas(cfg, hoje)}
+    mil_nova = bool(mil) and con.execute("SELECT valor FROM meta WHERE chave='milhas_coleta'").fetchone() != (
+        mil["coletado_em"],)
+    if mil:
+        con.execute("INSERT OR REPLACE INTO meta VALUES('milhas_status', ?)", (json.dumps(
+            {"coletado_em": mil["coletado_em"], **{k: v.get("status") for k, v in mil.get("programas", {}).items()}},
+            ensure_ascii=False),))
     for t in trechos:
         origens, destinos = t["origens"], t["destinos"]
         alvo = set(destinos)
@@ -202,7 +242,14 @@ def coletar(cfg, con, ts, link_fn, hoje=None) -> dict:
             if skip:
                 res["skiplag"] = min(skip, key=lambda o: (o.preco, o.paradas))
                 res["skiplags_top"] = sorted(skip, key=lambda o: (o.preco, o.paradas))[:5]
-            for modo in ("normal", "direto", "skiplag"):
+            if mil_nova:
+                for prog in t.get("milhas", []):
+                    dia_m = ((mil["programas"].get(prog) or {}).get("dias") or {}).get(dia) or {}
+                    v = milhas.melhor(dia_m.get("voos"), apos)
+                    if v:
+                        res[prog] = _op_milhas(v, dia, urls.get((t["nome"], prog, dia), ""),
+                                               (cfg.get("valor_milheiro") or {}).get(prog))
+            for modo in MODOS:
                 if modo in res:
                     det = asdict(res[modo])
                     if modo == "normal":
@@ -213,15 +260,21 @@ def coletar(cfg, con, ts, link_fn, hoje=None) -> dict:
                                 (ts, t["nome"], dia, modo, res[modo].preco, json.dumps(det, ensure_ascii=False)))
             resultados.append(res)
             n, dr, sk = res.get("normal"), res.get("direto"), res.get("skiplag")
-            log.info("trecho %s %s: menor %s%s | direto %s | skiplag %s%s", t["nome"], dia,
+            log.info("trecho %s %s: menor %s%s | direto %s | skiplag %s%s%s", t["nome"], dia,
                      _brl(n and n.preco), f" ({n.rota})" if n else "", _brl(dr and dr.preco),
-                     _brl(sk and sk.preco), f" (bilhete até {sk.skiplag_ate}, {sk.rota})" if sk else "")
+                     _brl(sk and sk.preco), f" (bilhete até {sk.skiplag_ate}, {sk.rota})" if sk else "",
+                     "".join(f" | {PROGRAMAS[p]} {_val(p, res[p].preco)}" for p in PROGRAMAS if p in res))
         con.commit()
     # só o detalhe da coleta mais recente fica guardado
     con.execute("UPDATE trechos_hist SET detalhe=NULL WHERE detalhe IS NOT NULL AND rowid NOT IN "
                 "(SELECT MAX(rowid) FROM trechos_hist GROUP BY trecho, data, modo)")
     con.commit()
-    log.info("trechos: %d buscas, %d falhas", b.n_buscas, b.n_falhas)
+    if mil_nova:
+        con.execute("INSERT OR REPLACE INTO meta VALUES('milhas_coleta', ?)", (mil["coletado_em"],))
+        con.commit()
+    log.info("trechos: %d buscas, %d falhas; milhas: %s", b.n_buscas, b.n_falhas,
+             (f"coleta {mil['coletado_em']}" + ("" if mil_nova else " (já registrada)")) if mil
+             else "nenhuma coleta recente")
     return {"resultados": resultados, "buscas": b.n_buscas, "falhas": b.n_falhas}
 
 
@@ -241,24 +294,25 @@ def decidir_alertas(cfg, con, ts, saida):
     for r in saida["resultados"]:
         t = r["trecho"]
         eco_min = t.get("skiplag_economia_minima_reais", cfg.get("skiplag", {}).get("economia_minima_reais", 60))
-        for modo in ("normal", "direto", "skiplag"):
+        for modo in MODOS:
             if modo not in r:
                 continue
             p = r[modo].preco
             hist = _hist(con, ts, t["nome"], r["data"], modo)
             ant = hist[-1] if hist else None
+            q_abs = a.get("queda_min_milhas", 2000) if modo in PROGRAMAS else q_rs
             motivos = []
-            if ant and ant - p >= max(q_rs, ant * q_pct):
-                motivos.append(f"caiu de {_brl(ant)} para {_brl(p)} (-{(ant - p) / ant:.0%})")
+            if ant and ant - p >= max(q_abs, ant * q_pct):
+                motivos.append(f"caiu de {_val(modo, ant)} para {_val(modo, p)} (-{(ant - p) / ant:.0%})")
             if len(hist) >= obs_min and p < min(hist):
-                motivos.append(f"menor preço já visto (antes {_brl(min(hist))})")
+                motivos.append(f"menor preço já visto (antes {_val(modo, min(hist))})")
             if modo == "skiplag" and "normal" in r and r["normal"].preco - p >= eco_min:
                 motivos.append(f"skiplag {_brl(r['normal'].preco - p)} mais barato que o melhor voo normal")
             if not motivos:
                 continue
             chave = f"trecho|{t['nome']}|{r['data']}|{modo}"
             ult = con.execute("SELECT preco FROM alertas WHERE chave=?", (chave,)).fetchone()
-            if ult and p > ult[0] - q_rs and not (ant and ant > ult[0]):
+            if ult and p > ult[0] - q_abs and not (ant and ant > ult[0]):
                 continue
             alertas.append({"r": r, "modo": modo, "preco": p, "motivos": motivos})
             chaves.append((chave, p))
@@ -267,7 +321,7 @@ def decidir_alertas(cfg, con, ts, saida):
 
 # ======================================================================= e-mail / painel
 
-NOME_MODO = {"normal": "mais barato", "direto": "direto", "skiplag": "skiplag"}
+NOME_MODO = {"normal": "mais barato", "direto": "direto", "skiplag": "skiplag", **PROGRAMAS}
 
 
 def _op_txt(o) -> str:
@@ -288,7 +342,7 @@ def email_html(alertas) -> str:
         r, o = a["r"], asdict(a["r"][a["modo"]])
         aviso = " (só bagagem de mão!)" if a["modo"] == "skiplag" else ""
         h.append(f"<p><b>{escape(r['trecho']['nome'])} — {_fd(r['data'])} — {NOME_MODO[a['modo']]}{aviso}: "
-                 f"{_brl(a['preco'])}</b><br><i>{escape('; '.join(a['motivos']))}</i><br>"
+                 f"{_val(a['modo'], a['preco'])}</b><br><i>{escape('; '.join(a['motivos']))}</i><br>"
                  f'<a href="{escape(o["link"])}">{escape(_op_txt(o))}</a></p>')
     return "".join(h)
 
@@ -315,7 +369,7 @@ def painel_html(con, cfg) -> str:
         linhas = []
         for d in dias:
             cel = []
-            for m in ("normal", "direto", "skiplag"):
+            for m in ("normal", "direto", "skiplag", *t.get("milhas", [])):
                 hist = serie.get((t["nome"], d, m)) or []
                 o = ultimo.get((t["nome"], d, m))
                 if not hist or not o:
@@ -324,9 +378,11 @@ def painel_html(con, cfg) -> str:
                 ant = hist[-2] if len(hist) >= 2 else None
                 dl = "" if ant in (None, hist[-1]) else (
                     f' <span class="{"down" if hist[-1] < ant else "up"}">{"▼" if hist[-1] < ant else "▲"}'
-                    f'{_brl(abs(hist[-1] - ant))}</span>')
+                    f'{_val(m, abs(hist[-1] - ant))}</span>')
                 cel.append(f'<td class="num"><a href="{escape(o["link"])}" target="_blank" rel="noopener">'
-                           f'<b>{_brl(hist[-1])}</b></a>{dl}<div class="muted">mín. {_brl(min(hist))}</div></td>')
+                           f'<b>{_val(m, hist[-1])}</b></a>{dl}<div class="muted">mín. {_val(m, min(hist))}'
+                           f'{"<br>" + escape(o["partida"]) + " " + escape(o["rota"]) + " " + escape(o["voos"]) if m in PROGRAMAS else ""}'
+                           f'</div></td>')
             n = ultimo.get((t["nome"], d, "normal"))
             sk = ultimo.get((t["nome"], d, "skiplag"))
             per = "".join(f'<li><a href="{escape(p["link"])}" target="_blank" rel="noopener">{p["periodo"]} '
@@ -345,8 +401,21 @@ def painel_html(con, cfg) -> str:
             f'<p class="muted">{" / ".join(t["origens"])} → {" / ".join(t["destinos"])}. "Mais barato" inclui '
             f'conexões. "Skiplag" = bilhete para outra cidade com parada em {"/".join(t["destinos"])}: você '
             f'desce na parada (só bagagem de mão, e não dá para comprar ida+volta assim). Clique no preço para '
-            f'abrir no Google Flights.</p>'
+            f'abrir no Google Flights.{_status_milhas(con, t)}</p>'
             f'<div class="tw"><table><thead><tr><th>Dia</th><th class="num">Mais barato</th>'
-            f'<th class="num">Direto</th><th class="num">Skiplag</th><th>Por período</th>'
+            f'<th class="num">Direto</th><th class="num">Skiplag</th>'
+            f'{"".join(f"<th class=num>{PROGRAMAS[p]}</th>" for p in t.get("milhas", []))}<th>Por período</th>'
             f'<th>Melhores skiplags</th></tr></thead><tbody>{"".join(linhas)}</tbody></table></div></section>')
     return "".join(secoes)
+
+
+def _status_milhas(con, t) -> str:
+    if not t.get("milhas"):
+        return ""
+    r = con.execute("SELECT valor FROM meta WHERE chave='milhas_status'").fetchone()
+    if not r:
+        return " Milhas: ainda sem coleta."
+    st = json.loads(r[0])
+    c = st["coletado_em"]
+    partes = [f"{PROGRAMAS[p]}: {st.get(p) or 'sem dados'}" for p in t["milhas"]]
+    return f" Milhas (coleta pelo Chrome em {c[8:10]}/{c[5:7]} {c[11:16]}): {'; '.join(partes)}."

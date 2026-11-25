@@ -45,9 +45,12 @@
       "data_fim": "2026-12-23",
       "partida_apos": { "2026-12-18": 18 },
       "skiplag_alem": [["REC", "FOR", "AJU", "MCZ", "NAT", "JPA"], ["BPS", "SLZ", "THE", "BEL", "MAO", "VDC"]],
-      "skiplag_economia_minima_reais": 60
+      "skiplag_economia_minima_reais": 60,
+      "milhas": ["smiles", "latam"]
     }
   ],
+
+  "valor_milheiro": { "smiles": 17, "latam": 25 },
 
   "link_painel": "https://monitor-voos.pages.dev/",
   "publicar_github": {
