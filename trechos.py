@@ -97,6 +97,9 @@ class BuscadorRPC:
                                      headers={"content-type": "application/x-www-form-urlencoded;charset=UTF-8"})
                 bruto = json.loads(r.text.lstrip(")]}'"))[0][2]
                 time.sleep(random.uniform(*self.pausa))
+                if not bruto and tent == 0:  # resposta vazia costuma ser bloqueio momentâneo: tenta de novo
+                    time.sleep(15)
+                    continue
                 return _ler(bruto) if bruto else []
             except Exception as e:
                 log.warning("trecho: falha %s %s->%s (tentativa %d): %s", dia, origens, destinos, tent + 1,
