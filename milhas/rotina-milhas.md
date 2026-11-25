@@ -14,6 +14,8 @@ PASSOS
 ```
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 for(let i=0;i<45&&!/A partir de/.test(document.body.innerText);i++) await sleep(1000);
+const ord=[...document.querySelectorAll('button')].find(x=>x.innerText.trim()==='Menor preço');
+if(ord){ord.click();await sleep(3000);}
 for(let i=0;i<6;i++){window.scrollTo(0,document.body.scrollHeight);await sleep(1200);}
 const t=document.body.innerText.replace(/\n+/g,' | ');
 const faixa={};for(const m of t.matchAll(/(\d\d) (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez) \| ([\d.]+) milhas/g)) faixa[m[1]+' '+m[2]]=+m[3].replace(/\./g,'');
@@ -28,7 +30,7 @@ const voos=s.split('Selecionar tarifa').map(c=>{
    reais:m[2]?+m[2].replace(/\./g,'').replace(',','.'):null};}).filter(Boolean);
 JSON.stringify({faixa,voos})
 ```
-   Se voltar sem voos, espere 10 s e rode de novo uma vez. A `faixa` traz o menor preço de cada dia da barra de datas. Guarde-a também, porque ela serve de conferência.
+   O script clica em "Menor preço" (só muda a ordem da lista, não compra nada). Sem isso, só carregam os 10 primeiros voos na ordem "relevante" e as conexões mais baratas ficam de fora. Se voltar sem voos, espere 10 s e rode de novo uma vez. A `faixa` traz o menor preço de cada dia da barra de datas. Guarde-a também, porque ela serve de conferência.
 3. LATAM PASS: para cada busca latam, navegue até a url e espere uns 10 s. Se o endereço for para auth.latamairlines.com ou a página pedir login, marque `"status": "precisa login"` para a LATAM e PULE as outras buscas latam. Se aparecerem resultados, extraia de cada voo (lendo document.body.innerText com JavaScript ou get_page_text): companhia, aeroporto e hora de saída, aeroporto e hora de chegada, número de paradas, milhas (pontos) e taxas em R$ (se houver). Role a página para carregar tudo.
 4. Feche a aba que abriu.
 5. Grave com a ferramenta Write o arquivo `milhas\coleta\<AAAA-MM-DD_HHMM>.json` (data e hora de agora) neste formato:
